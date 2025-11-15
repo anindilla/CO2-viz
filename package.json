@@ -1,0 +1,26 @@
+{
+  "name": "co2-viz",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "prepare:data": "node scripts/prepare-data.cjs",
+    "test:console": "node scripts/check-console.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "elm": "^0.19.1-6",
+    "playwright": "^1.56.1",
+    "vite": "^5.4.10",
+    "vite-plugin-elm": "^3.0.1"
+  },
+  "dependencies": {
+    "csv-parse": "^6.1.0"
+  }
+}
