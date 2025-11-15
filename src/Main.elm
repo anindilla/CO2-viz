@@ -4,6 +4,7 @@ import Browser
 import Data
 import Dict exposing (Dict)
 import Html exposing (Html)
+import Html.Keyed as Keyed
 import Html.Attributes as Attr
 import Html.Events as Events
 import Http
@@ -48,6 +49,8 @@ type alias Model =
     , emitterView : EmitterView
     , focusIso : Maybe String
     , compareIso : Maybe String
+    , tableSort : TableSort
+    , growthFocus : GrowthFocus
     }
 
 
@@ -60,6 +63,32 @@ type Msg
     | SetEmitterView EmitterView
     | SelectFocus String
     | SelectCompare String
+    | ChangeTableSort RankColumn
+    | SelectGrowth GrowthFocus
+
+
+type RankColumn
+    = RankByTotal
+    | RankByYoY
+    | RankByPerCapita
+    | RankByShare
+    | RankByName
+
+
+type SortOrder
+    = Asc
+    | Desc
+
+
+type alias TableSort =
+    { column : RankColumn
+    , order : SortOrder
+    }
+
+
+type GrowthFocus
+    = GrowthGlobal
+    | GrowthTop String
 
 
 main : Program () Model Msg
@@ -82,6 +111,8 @@ initModel =
     , emitterView = ByCountry
     , focusIso = Nothing
     , compareIso = Nothing
+    , tableSort = { column = RankByTotal, order = Desc }
+    , growthFocus = GrowthGlobal
     }
 
 
@@ -202,6 +233,28 @@ update msg model =
         SelectCompare iso ->
             withTitle { model | compareIso = Just iso } Cmd.none
 
+        ChangeTableSort column ->
+            let
+                existing =
+                    model.tableSort
+
+                newOrder =
+                    if existing.column == column then
+                        case existing.order of
+                            Asc ->
+                                Desc
+
+                            Desc ->
+                                Asc
+
+                    else
+                        Desc
+            in
+            withTitle { model | tableSort = { column = column, order = newOrder } } Cmd.none
+
+        SelectGrowth focus ->
+            withTitle { model | growthFocus = focus } Cmd.none
+
 
 clampYear : Data.Dashboard -> Int -> Int
 clampYear dashboard value =
@@ -220,9 +273,20 @@ clampYear dashboard value =
 
 view : Model -> Html Msg
 view model =
-    Html.main_
+    let
+        sectionKey =
+            case model.menu of
+                Learn ->
+                    "learn"
+
+                Explore ->
+                    "explore"
+    in
+    Keyed.node "main"
         [ Attr.class "layout" ]
-        (viewHero model.menu :: viewSections model)
+        [ ( "hero", viewHero model.menu )
+        , ( sectionKey, Html.div [ Attr.class "stack" ] (viewSections model) )
+        ]
 
 
 viewSections : Model -> List (Html Msg)
@@ -306,15 +370,15 @@ viewLearnSections dashboard insightsRemote =
                     else
                         doc.insights.highlights
 
-                emitterRows =
-                    topCountriesByCo2 year 12 dashboard
+                rankingSample =
+                    dashboard.analytics.ranking |> List.take 10
             in
             [ viewInsightHero doc year
             , viewHighlightGrid highlights
             , viewInsightBoard dashboard year
             , viewActionsGrid doc.insights.actions
             , viewQuestionsGrid doc.insights.questions
-            , viewTopEmitterTable year emitterRows
+            , viewTopEmitterTable rankingSample
             , viewYoYTable dashboard
             ]
 
@@ -434,12 +498,19 @@ viewQuestionsGrid questions =
         ]
 
 
-viewTopEmitterTable : Int -> List CountrySnapshot -> Html Msg
-viewTopEmitterTable year rows =
+viewTopEmitterTable : List Data.RankingRow -> Html Msg
+viewTopEmitterTable rows =
     Html.section [ Attr.class "panel insight-table" ]
         [ Html.div [ Attr.class "section-header" ]
             [ Html.h2 [] [ Html.text "Top emitters table" ]
-            , Html.span [] [ Html.text ("Ranked by total CO₂ · " ++ String.fromInt year) ]
+            , Html.span []
+                (case rows |> List.head of
+                    Just row ->
+                        [ Html.text ("Ranked by total CO₂ · " ++ String.fromInt row.year) ]
+
+                    Nothing ->
+                        []
+                )
             ]
         , Html.table []
             [ Html.thead []
@@ -456,9 +527,21 @@ viewTopEmitterTable year rows =
                         (\index row ->
                             Html.tr []
                                 [ Html.td [] [ Html.text (String.fromInt (index + 1) ++ ". " ++ row.name) ]
-                                , Html.td [] [ Html.text (formatNumber 1 row.co2) ]
-                                , Html.td [] [ Html.text (row.share |> Maybe.map (\v -> formatNumber 2 v ++ "%") |> Maybe.withDefault "—") ]
-                                , Html.td [] [ Html.text (row.perCapita |> Maybe.map (formatNumber 2) |> Maybe.withDefault "—") ]
+                                , Html.td [] [ Html.text (formatNumber 1 row.total) ]
+                                , Html.td []
+                                    [ Html.text
+                                        (row.share
+                                            |> Maybe.map (\v -> formatNumber 2 v ++ "%")
+                                            |> Maybe.withDefault "—"
+                                        )
+                                    ]
+                                , Html.td []
+                                    [ Html.text
+                                        (row.perCapita
+                                            |> Maybe.map (formatNumber 2)
+                                            |> Maybe.withDefault "—"
+                                        )
+                                    ]
                                 ]
                         )
                 )
@@ -664,13 +747,10 @@ viewExploreSections dashboard model =
             perCapitaEntries year dashboard |> List.take 6
     in
     [ viewExploreHero dashboard model
-    , viewStoryHighlights dashboard year
-    , viewGlobalTrend dashboard model.trendMode
+    , viewRankingPanel dashboard model.tableSort
+    , viewGrowthPanel dashboard model.growthFocus
     , viewMapSection dashboard year topCountries
     , viewComposition dashboard year model.emitterView topCountries
-    , viewPareto year topCountries
-    , viewGrowthDeck dashboard year
-    , viewPerCapitaList year perCapLeaders
     , viewScatter dashboard year
     , viewCountryComparison dashboard model year
     ]
@@ -711,6 +791,154 @@ viewExploreHero dashboard model =
                 ]
                 []
             ]
+        ]
+
+
+viewRankingPanel : Data.Dashboard -> TableSort -> Html Msg
+viewRankingPanel dashboard tableSort =
+    let
+        rows =
+            rankingRows dashboard tableSort |> List.take 50
+    in
+    Html.section [ Attr.class "panel ranking-panel" ]
+        [ Html.div [ Attr.class "section-header" ]
+            [ Html.div []
+                [ Html.h2 [] [ Html.text "Global emitters" ]
+                , Html.span []
+                    [ Html.text "Reference style inspired by Worldometer ranking" ]
+                ]
+            , Html.span [ Attr.class "muted" ]
+                [ Html.text "Click any column to sort" ]
+            ]
+        , Html.table []
+            [ Html.thead []
+                [ Html.tr []
+                    [ Html.th [] [ Html.text "#" ]
+                    , Html.th [] [ sortButton tableSort RankByName "Country" ]
+                    , Html.th [] [ sortButton tableSort RankByTotal "CO₂ (Mt)" ]
+                    , Html.th [] [ sortButton tableSort RankByYoY "Δ Mt" ]
+                    , Html.th [] [ sortButton tableSort RankByPerCapita "Per capita" ]
+                    , Html.th [] [ sortButton tableSort RankByShare "Share %" ]
+                    ]
+                ]
+            , Html.tbody []
+                (rows
+                    |> List.indexedMap
+                        (\idx row ->
+                            Html.tr []
+                                [ Html.td [] [ Html.text (String.fromInt (idx + 1)) ]
+                                , Html.td [] [ Html.text row.name ]
+                                , Html.td []
+                                    [ Html.text (formatNumber 1 row.total) ]
+                                , Html.td []
+                                    [ Html.text
+                                        (row.yoy
+                                            |> Maybe.map formatSigned
+                                            |> Maybe.withDefault "–"
+                                        )
+                                    ]
+                                , Html.td []
+                                    [ Html.text
+                                        (row.perCapita
+                                            |> Maybe.map (formatNumber 2)
+                                            |> Maybe.withDefault "–"
+                                        )
+                                    ]
+                                , Html.td []
+                                    [ Html.text
+                                        (row.share
+                                            |> Maybe.map (\value -> formatNumber 2 value ++ "%")
+                                            |> Maybe.withDefault "–"
+                                        )
+                                    ]
+                                ]
+                        )
+                )
+            ]
+        ]
+
+
+sortButton : TableSort -> RankColumn -> String -> Html Msg
+sortButton tableSort column label =
+    let
+        isActive =
+            tableSort.column == column
+
+        arrow =
+            if isActive then
+                case tableSort.order of
+                    Asc ->
+                        "↑"
+
+                    Desc ->
+                        "↓"
+
+            else
+                ""
+    in
+    Html.button
+        [ Attr.class ("table-sort " ++ (if isActive then "is-active" else ""))
+        , Attr.type_ "button"
+        , Events.onClick (ChangeTableSort column)
+        ]
+        [ Html.span [] [ Html.text label ]
+        , Html.span [ Attr.class "table-sort__arrow" ] [ Html.text arrow ]
+        ]
+
+
+viewGrowthPanel : Data.Dashboard -> GrowthFocus -> Html Msg
+viewGrowthPanel dashboard focus =
+    let
+        ( seriesPoints, activeSeries ) =
+            growthSeriesFor dashboard focus
+
+        chartPoints =
+            seriesPoints
+                |> List.map (\point -> ( toFloat point.year, point.value ))
+                |> takeRecent 120
+
+        selectionValue =
+            growthFocusValue focus
+
+        options =
+            growthOptions dashboard
+    in
+    Html.section [ Attr.class "panel growth-panel" ]
+        [ Html.div [ Attr.class "section-header" ]
+            [ Html.div []
+                [ Html.h2 [] [ Html.text "Growth view" ]
+                , Html.span []
+                    [ Html.text "Inspired by Our World in Data’s trajectory charts" ]
+                ]
+            , Html.select
+                [ Attr.value selectionValue
+                , Events.onInput (growthFocusFromValue >> SelectGrowth)
+                ]
+                (options
+                    |> List.map
+                        (\( label, optionFocus ) ->
+                            Html.option
+                                [ Attr.value (growthFocusValue optionFocus)
+                                , Attr.selected (optionFocus == focus)
+                                ]
+                                [ Html.text label ]
+                        )
+                )
+            ]
+        , lineChart
+            { width = 920
+            , height = 280
+            , color = "#2563eb"
+            , fill = "rgba(37,99,235,0.12)"
+            }
+            chartPoints
+        , case activeSeries of
+            Just series ->
+                Html.p [ Attr.class "muted" ]
+                    [ Html.text ("Showing trajectory for " ++ series.name ++ ".") ]
+
+            Nothing ->
+                Html.text ""
         ]
 
 
@@ -803,27 +1031,81 @@ viewTrendToggle current target label =
 
 
 viewMapSection : Data.Dashboard -> Int -> List CountrySnapshot -> Html Msg
-viewMapSection dashboard year countries =
+viewMapSection dashboard year _ =
+    let
+        bins =
+            mapBins dashboard
+
+        featured =
+            mapEntries dashboard
+                |> List.filter (\entry -> String.length entry.iso == 3)
+                |> List.take 8
+    in
     Html.section [ Attr.class "panel map-panel" ]
         [ Html.div [ Attr.class "section-header" ]
-            [ Html.h2 [] [ Html.text "Map of major emitters" ]
-            , Html.span [] [ Html.text ("Highlighting top countries · " ++ String.fromInt year) ]
+            [ Html.h2 [] [ Html.text "Global map" ]
+            , Html.span [] [ Html.text ("WorldPopulationReview-inspired choropleth · " ++ String.fromInt year) ]
             ]
         , Html.div [ Attr.class "map-panel__body" ]
             [ Html.div [ Attr.id "emissions-map", Attr.class "map-panel__map" ] []
             , Html.div [ Attr.class "map-panel__legend" ]
-                (countries
-                    |> List.take 6
-                    |> List.map
-                        (\snapshot ->
-                            Html.div [ Attr.class "map-panel__legend-row" ]
-                                [ Html.span [] [ Html.text snapshot.name ]
-                                , Html.span [] [ Html.text (formatNumber 1 snapshot.co2 ++ " Mt") ]
-                                ]
-                        )
-                )
+                [ viewChoroplethLegend bins
+                , Html.div []
+                    (featured
+                        |> List.map
+                            (\entry ->
+                                Html.div [ Attr.class "map-panel__legend-row" ]
+                                    [ Html.span [] [ Html.text entry.name ]
+                                    , Html.span [] [ Html.text (formatNumber 1 entry.value ++ " Mt") ]
+                                    ]
+                            )
+                    )
+                ]
             ]
         ]
+
+
+viewChoroplethLegend : List Float -> Html Msg
+viewChoroplethLegend bins =
+    if List.isEmpty bins then
+        Html.text ""
+
+    else
+        Html.div [ Attr.class "map-legend" ]
+            (binLabels bins
+                |> List.map
+                    (\( idx, label ) ->
+                        Html.div [ Attr.class "map-legend__item" ]
+                            [ Html.span [ Attr.class ("map-legend__swatch map-legend__swatch--" ++ String.fromInt idx) ] []
+                            , Html.span [] [ Html.text label ]
+                            ]
+                    )
+            )
+
+
+binLabels : List Float -> List ( Int, String )
+binLabels bins =
+    let
+        helper remaining previous idx acc =
+            case remaining of
+                [] ->
+                    List.reverse acc
+
+                current :: rest ->
+                    let
+                        label =
+                            if idx == 0 then
+                                "< " ++ formatNumber 0 current
+
+                            else if List.isEmpty rest then
+                                "≥ " ++ formatNumber 0 previous
+
+                            else
+                                formatNumber 0 previous ++ " – " ++ formatNumber 0 current
+                    in
+                    helper rest current (idx + 1) (( idx, label ) :: acc)
+    in
+    helper bins 0 0 []
 
 
 viewComposition : Data.Dashboard -> Int -> EmitterView -> List CountrySnapshot -> Html Msg
@@ -1695,6 +1977,113 @@ isAggregator name =
     String.contains "income" (String.toLower name)
         || String.contains "(GCP" name
         || name == "World"
+
+
+rankingRows : Data.Dashboard -> TableSort -> List Data.RankingRow
+rankingRows dashboard tableSort =
+    let
+        rows =
+            dashboard.analytics.ranking
+
+        compareValue rowA rowB =
+            let
+                comparator =
+                    case tableSort.column of
+                        RankByTotal ->
+                            compare rowA.total rowB.total
+
+                        RankByYoY ->
+                            compare (Maybe.withDefault 0 rowA.yoy) (Maybe.withDefault 0 rowB.yoy)
+
+                        RankByPerCapita ->
+                            compare (Maybe.withDefault 0 rowA.perCapita) (Maybe.withDefault 0 rowB.perCapita)
+
+                        RankByShare ->
+                            compare (Maybe.withDefault 0 rowA.share) (Maybe.withDefault 0 rowB.share)
+
+                        RankByName ->
+                            compare rowA.name rowB.name
+            in
+            case tableSort.order of
+                Asc ->
+                    comparator
+
+                Desc ->
+                    comparator |> flipCompare
+    in
+    List.sortWith compareValue rows
+
+
+flipCompare : Order -> Order
+flipCompare result =
+    case result of
+        LT ->
+            GT
+
+        GT ->
+            LT
+
+        EQ ->
+            EQ
+
+
+growthSeriesFor : Data.Dashboard -> GrowthFocus -> ( List Data.GrowthPoint, Maybe Data.TopSeries )
+growthSeriesFor dashboard focus =
+    case focus of
+        GrowthGlobal ->
+            ( dashboard.analytics.growth.global, Nothing )
+
+        GrowthTop iso ->
+            let
+                chosen =
+                    dashboard.analytics.growth.topEmitters
+                        |> List.filter (\series -> series.iso == iso)
+                        |> List.head
+            in
+            case chosen of
+                Just series ->
+                    ( series.points, Just series )
+
+                Nothing ->
+                    ( dashboard.analytics.growth.global, Nothing )
+
+
+growthOptions : Data.Dashboard -> List ( String, GrowthFocus )
+growthOptions dashboard =
+    let
+        top =
+            dashboard.analytics.growth.topEmitters
+                |> List.map (\series -> ( series.name, GrowthTop series.iso ))
+    in
+    ( "Global total", GrowthGlobal ) :: top
+
+
+mapEntries : Data.Dashboard -> List Data.MapEntry
+mapEntries dashboard =
+    dashboard.analytics.map.entries
+
+
+mapBins : Data.Dashboard -> List Float
+mapBins dashboard =
+    dashboard.analytics.map.bins
+
+
+growthFocusValue : GrowthFocus -> String
+growthFocusValue focus =
+    case focus of
+        GrowthGlobal ->
+            "__global__"
+
+        GrowthTop iso ->
+            iso
+
+
+growthFocusFromValue : String -> GrowthFocus
+growthFocusFromValue value =
+    if value == "__global__" then
+        GrowthGlobal
+    else
+        GrowthTop value
 
 
 withTitle : Model -> Cmd Msg -> ( Model, Cmd Msg )

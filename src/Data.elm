@@ -5,6 +5,13 @@ module Data exposing
     , Snapshot
     , EmittersForYear
     , Emitter
+    , Analytics
+    , RankingRow
+    , Growth
+    , GrowthPoint
+    , TopSeries
+    , MapData
+    , MapEntry
     , decoder
     )
 
@@ -18,6 +25,7 @@ type alias Dashboard =
     , global : Series
     , countries : List Country
     , emitters : List EmittersForYear
+    , analytics : Analytics
     }
 
 
@@ -63,6 +71,57 @@ type alias Emitter =
     }
 
 
+type alias Analytics =
+    { ranking : List RankingRow
+    , growth : Growth
+    , map : MapData
+    }
+
+
+type alias RankingRow =
+    { iso : String
+    , name : String
+    , year : Int
+    , total : Float
+    , yoy : Maybe Float
+    , perCapita : Maybe Float
+    , share : Maybe Float
+    , population : Maybe Float
+    }
+
+
+type alias Growth =
+    { global : List GrowthPoint
+    , topEmitters : List TopSeries
+    }
+
+
+type alias GrowthPoint =
+    { year : Int
+    , value : Float
+    }
+
+
+type alias TopSeries =
+    { iso : String
+    , name : String
+    , points : List GrowthPoint
+    }
+
+
+type alias MapData =
+    { bins : List Float
+    , entries : List MapEntry
+    }
+
+
+type alias MapEntry =
+    { iso : String
+    , name : String
+    , value : Float
+    }
+
+
 decoder : Decoder Dashboard
 decoder =
     Decode.succeed Dashboard
@@ -71,6 +130,7 @@ decoder =
         |> required "global" seriesDecoder
         |> required "countries" (Decode.list countryDecoder)
         |> required "emitters" (Decode.list emittersDecoder)
+        |> required "analytics" analyticsDecoder
 
 
 seriesDecoder : Decoder Series
@@ -118,6 +178,64 @@ emitterDecoder =
         |> required "name" Decode.string
         |> required "co2" Decode.float
         |> required "share" maybeFloat
+
+
+analyticsDecoder : Decoder Analytics
+analyticsDecoder =
+    Decode.succeed Analytics
+        |> required "ranking" (Decode.list rankingDecoder)
+        |> required "growth" growthDecoder
+        |> required "map" mapDecoder
+
+
+rankingDecoder : Decoder RankingRow
+rankingDecoder =
+    Decode.succeed RankingRow
+        |> required "iso" Decode.string
+        |> required "name" Decode.string
+        |> required "year" Decode.int
+        |> required "total" Decode.float
+        |> required "yoy" maybeFloat
+        |> required "perCapita" maybeFloat
+        |> required "share" maybeFloat
+        |> required "population" maybeFloat
+
+
+growthDecoder : Decoder Growth
+growthDecoder =
+    Decode.succeed Growth
+        |> required "global" (Decode.list growthPointDecoder)
+        |> required "topEmitters" (Decode.list topSeriesDecoder)
+
+
+growthPointDecoder : Decoder GrowthPoint
+growthPointDecoder =
+    Decode.succeed GrowthPoint
+        |> required "year" Decode.int
+        |> required "value" Decode.float
+
+
+topSeriesDecoder : Decoder TopSeries
+topSeriesDecoder =
+    Decode.succeed TopSeries
+        |> required "iso" Decode.string
+        |> required "name" Decode.string
+        |> required "points" (Decode.list growthPointDecoder)
+
+
+mapDecoder : Decoder MapData
+mapDecoder =
+    Decode.succeed MapData
+        |> required "bins" (Decode.list Decode.float)
+        |> required "entries" (Decode.list mapEntryDecoder)
+
+
+mapEntryDecoder : Decoder MapEntry
+mapEntryDecoder =
+    Decode.succeed MapEntry
+        |> required "iso" Decode.string
+        |> required "name" Decode.string
+        |> required "value" Decode.float
 
 
 maybeFloat : Decoder (Maybe Float)

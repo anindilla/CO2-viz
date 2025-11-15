@@ -112,6 +112,8 @@ function main() {
     emitters: finalizeEmitters(emittersMap)
   };
 
+  dashboard.analytics = buildAnalytics(dashboard, countryPoints);
+
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
   fs.writeFileSync(OUTPUT_FILE, JSON.stringify(dashboard));
   const sizeKb = (fs.statSync(OUTPUT_FILE).size / 1024).toFixed(1);
@@ -151,6 +153,140 @@ function finalizeEmitters(map) {
         .slice(0, EMITTER_LIMIT)
     }))
     .sort((a, b) => a.year - b.year);
+}
+
+function buildAnalytics(dashboard, countryPoints) {
+  const ranking = buildRanking(dashboard, countryPoints);
+  const growth = buildGrowth(dashboard, ranking);
+  const choropleth = buildMapPayload(ranking);
+
+  return {
+    ranking,
+    growth,
+    map: choropleth
+  };
+}
+
+function buildRanking(dashboard, countryPoints) {
+  const latestYear = Math.max(...dashboard.global.years);
+  const prevYear = latestYear - 1;
+  const globalTotal =
+    dashboard.global.years.reduce((acc, year, idx) => {
+      if (year === latestYear) {
+        const value = dashboard.global.co2[idx];
+        return Number.isFinite(value) ? value : acc;
+      }
+      return acc;
+    }, 0) || 0;
+
+  return Array.from(countryPoints.values())
+    .map((entry) => {
+      if (isAggregator(entry.name) || typeof entry.iso !== 'string' || entry.iso.length !== 3) return null;
+      const latest = entry.points.find((point) => point.year === latestYear);
+      if (!latest || latest.co2 === null) return null;
+
+      const previous = entry.points.find((point) => point.year === prevYear);
+      const yoy = previous && previous.co2 !== null ? Number((latest.co2 - previous.co2).toFixed(3)) : null;
+
+      return {
+        iso: entry.iso,
+        name: entry.name,
+        year: latestYear,
+        total: latest.co2,
+        yoy,
+        perCapita: latest.perCapita,
+        share: globalTotal > 0 ? Number(((latest.co2 / globalTotal) * 100).toFixed(3)) : null,
+        population: latest.population
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 100);
+}
+
+function isAggregator(name) {
+  if (!name) return false;
+  const lower = name.toLowerCase();
+  return (
+    lower.includes('income') ||
+    lower.includes('world') ||
+    lower.includes('europe') ||
+    lower.includes('(gcp') ||
+    lower.includes('union') ||
+    lower.includes('transport')
+  );
+}
+function buildGrowth(dashboard, ranking) {
+  const topIsos = ranking.slice(0, 5).map((row) => row.iso);
+  const countriesByIso = new Map(dashboard.countries.map((country) => [country.iso, country]));
+
+  const topSeries = topIsos
+    .map((iso) => {
+      const country = countriesByIso.get(iso);
+      if (!country) return null;
+
+      const points = country.series.years.map((year, idx) => {
+        const value = country.series.co2[idx];
+        return {
+          year,
+          value: value ?? 0
+        };
+      });
+
+      return {
+        iso,
+        name: country.name,
+        points
+      };
+    })
+    .filter(Boolean);
+
+  const globalPoints = dashboard.global.years.map((year, idx) => ({
+    year,
+    value: dashboard.global.co2[idx] ?? 0
+  }));
+
+  return {
+    global: globalPoints,
+    topEmitters: topSeries
+  };
+}
+
+function buildMapPayload(ranking) {
+  const values = ranking.map((row) => row.total).filter((value) => Number.isFinite(value) && value > 0);
+  if (values.length === 0) {
+    return {
+      bins: [],
+      entries: []
+    };
+  }
+
+  const bins = computeQuantileBreaks(values, 5);
+
+  return {
+    bins,
+    entries: ranking.map((row) => ({
+      iso: row.iso,
+      name: row.name,
+      value: row.total
+    }))
+  };
+}
+
+function computeQuantileBreaks(values, segments) {
+  const sorted = values.slice().sort((a, b) => a - b);
+  const breaks = [];
+  for (let i = 1; i < segments; i += 1) {
+    const position = (sorted.length - 1) * (i / segments);
+    const lower = Math.floor(position);
+    const upper = lower + 1;
+    const weight = position - lower;
+    const value =
+      upper < sorted.length ? sorted[lower] * (1 - weight) + sorted[upper] * weight : sorted[lower];
+    breaks.push(Number(value.toFixed(2)));
+  }
+  breaks.push(Number(sorted[sorted.length - 1].toFixed(2)));
+  return breaks;
 }
 
 main();

@@ -135,6 +135,74 @@ body {
   color: var(--muted);
 }
 
+.ranking-panel table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.ranking-panel th,
+.ranking-panel td {
+  padding: 0.65rem 0.4rem;
+  border-bottom: 1px solid rgba(7, 20, 12, 0.08);
+  text-align: left;
+}
+
+.table-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.table-sort__arrow {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.table-sort.is-active .table-sort__arrow {
+  color: var(--primary);
+}
+
+.growth-panel select {
+  border-radius: 999px;
+  padding: 0.4rem 1rem;
+  border: 1px solid var(--border);
+  background: rgba(15, 23, 42, 0.02);
+}
+
+.map-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}
+
+.map-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.map-legend__swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.map-legend__swatch--0 { background: #e0f3f3; }
+.map-legend__swatch--1 { background: #a6d5d5; }
+.map-legend__swatch--2 { background: #6db7b7; }
+.map-legend__swatch--3 { background: #2f8f8f; }
+.map-legend__swatch--4 { background: #0b5e5e; }
+
 .menu-switch {
   display: grid;
   grid-template-columns: auto 1fr;
