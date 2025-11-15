@@ -7,6 +7,9 @@ import { spawn } from 'node:child_process';
 const elmExecutable = process.platform === 'win32' ? 'elm.cmd' : 'elm';
 const elmBin = path.join(process.cwd(), 'node_modules', '.bin', elmExecutable);
 
+const GLOBAL_PATCH_NEEDLE = '}(this));';
+const GLOBAL_PATCH_REPLACEMENT = '}(typeof globalThis !== "undefined" ? globalThis : this));';
+
 const elmPlugin = () => {
   const cache = new Map();
 
@@ -27,13 +30,18 @@ const elmPlugin = () => {
       const tmpDir = await mkdtemp(path.join(tmpdir(), 'elm-vite-'));
       const outFile = path.join(tmpDir, 'elm.js');
 
-      await runElm(cleanId, outFile, process.env.NODE_ENV === 'production');
-      const js = await readFile(outFile, 'utf8');
-      await rm(tmpDir, { recursive: true, force: true });
-
-      const wrapped = `${js}\nexport const Elm = globalThis.Elm;`;
-      cache.set(cacheKey, wrapped);
-      return wrapped;
+      try {
+        await runElm(cleanId, outFile, process.env.NODE_ENV === 'production');
+        const js = await readFile(outFile, 'utf8');
+        const patched = js.includes(GLOBAL_PATCH_NEEDLE)
+          ? js.replace(GLOBAL_PATCH_NEEDLE, GLOBAL_PATCH_REPLACEMENT)
+          : js;
+        const wrapped = `${patched}\nexport const Elm = globalThis.Elm;`;
+        cache.set(cacheKey, wrapped);
+        return wrapped;
+      } finally {
+        await rm(tmpDir, { recursive: true, force: true });
+      }
     }
   };
 };

@@ -5,7 +5,9 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
+    "predev": "node scripts/prepare-data.cjs",
     "dev": "vite",
+    "prebuild": "node scripts/prepare-data.cjs",
     "build": "vite build",
     "preview": "vite preview",
     "prepare:data": "node scripts/prepare-data.cjs",
