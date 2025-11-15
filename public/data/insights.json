@@ -1,0 +1,37 @@
+{
+  "generatedAt": "2025-11-15T16:26:56.482Z",
+  "model": "local-fallback",
+  "source": "deterministic-summary",
+  "status": "fallback",
+  "datasetHash": "e351ba77c59bb89c8e51eac0c00e3267",
+  "insights": {
+    "highlights": [
+      {
+        "title": "Dataset span",
+        "detail": "Records cover 1750–2021 with 50,598 observations.",
+        "evidence": "year column"
+      },
+      {
+        "title": "Global momentum",
+        "detail": "World CO₂ was 37123.9 Mt in 2021, 1859.8 Mt above 2020.",
+        "evidence": "World rows"
+      },
+      {
+        "title": "Top emitter",
+        "detail": "World contributes 1736930 Mt across the record, leading global totals.",
+        "evidence": "co2 column"
+      }
+    ],
+    "narrative": "The CO₂ dataset spans 1750-2021, tracing the rise of fossil emissions from industrialized economies while global totals climbed into the tens of gigatonnes.",
+    "actions": [
+      "Scale zero-carbon grids to displace coal and gas baseload.",
+      "Cut oil demand with transit, EV freight, and active mobility.",
+      "Rebuild materials loops with circular steel, cement, and recycling."
+    ],
+    "questions": [
+      "Which regions bent their emissions curves after policy shifts?",
+      "How fast can top emitters close the gap to net-zero trajectories?",
+      "Where do per-capita trends diverge from economic growth?"
+    ]
+  }
+}

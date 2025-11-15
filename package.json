@@ -5,12 +5,12 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "predev": "node scripts/prepare-data.cjs",
+    "predev": "node scripts/prepare-data.cjs && node scripts/ai-insights.cjs",
     "dev": "vite",
-    "prebuild": "node scripts/prepare-data.cjs",
+    "prebuild": "node scripts/prepare-data.cjs && node scripts/ai-insights.cjs",
     "build": "vite build",
     "preview": "vite preview",
-    "prepare:data": "node scripts/prepare-data.cjs",
+    "prepare:data": "node scripts/prepare-data.cjs && node scripts/ai-insights.cjs",
     "test:console": "node scripts/check-console.mjs"
   },
   "keywords": [],

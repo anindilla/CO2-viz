@@ -1,0 +1,17 @@
+[
+  { "id": "World", "lat": 10, "lon": 0 },
+  { "id": "North America", "lat": 45, "lon": -100 },
+  { "id": "South America", "lat": -15, "lon": -60 },
+  { "id": "Europe", "lat": 54, "lon": 15 },
+  { "id": "Africa", "lat": 2, "lon": 21 },
+  { "id": "Asia", "lat": 32, "lon": 90 },
+  { "id": "Asia (excl. China and India)", "lat": 15, "lon": 120 },
+  { "id": "Oceania", "lat": -25, "lon": 135 },
+  { "id": "OECD (GCP)", "lat": 40, "lon": -20 },
+  { "id": "Non-OECD (GCP)", "lat": 15, "lon": 60 },
+  { "id": "High-income countries", "lat": 50, "lon": -10 },
+  { "id": "Upper-middle-income countries", "lat": 25, "lon": 30 },
+  { "id": "Lower-middle-income countries", "lat": 5, "lon": 80 },
+  { "id": "Low-income countries", "lat": -5, "lon": 35 }
+]
+

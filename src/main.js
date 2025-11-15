@@ -25,44 +25,25 @@ const render = () => {
   destroyMap();
   mountNode.innerHTML = '';
   const app = Elm.Main.init({ node: mountNode });
-  console.log('Elm app initialized');
-  setupMapBridge(app);
-  dedupePanels();
-  observePanels();
+  setupPorts(app);
 };
 
-const setupMapBridge = (app) => {
-  if (app?.ports?.mapUpdate) {
+const setupPorts = (app) => {
+  if (!app?.ports) return;
+
+  if (app.ports.mapUpdate) {
     app.ports.mapUpdate.subscribe((payload) => {
       requestAnimationFrame(() => updateMap(payload));
-      dedupePanels();
     });
   }
-};
 
-const dedupePanels = () => {
-  const seen = new Set();
-  const container = document.querySelector('.stack');
-  if (!container) return;
-  container.querySelectorAll('section.panel[data-panel]').forEach((section) => {
-    const key = section.getAttribute('data-panel');
-    if (!key) return;
-    if (seen.has(key)) {
-      section.remove();
-    } else {
-      seen.add(key);
-    }
-  });
-};
-
-const observePanels = () => {
-  const container = document.querySelector('.stack');
-  if (!container || container.__dedupeObserver) return;
-  const observer = new MutationObserver(() => {
-    dedupePanels();
-  });
-  observer.observe(container, { childList: true });
-  container.__dedupeObserver = observer;
+  if (app.ports.setTitle) {
+    app.ports.setTitle.subscribe((title) => {
+      if (typeof title === 'string') {
+        document.title = title;
+      }
+    });
+  }
 };
 
 const ensureMap = () => {
@@ -115,6 +96,10 @@ render();
 if (import.meta.hot) {
   import.meta.hot.accept(() => {
     render();
+  });
+
+  import.meta.hot.dispose(() => {
+    destroyMap();
   });
 }
 

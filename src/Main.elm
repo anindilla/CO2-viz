@@ -7,6 +7,7 @@ import Html exposing (Html)
 import Html.Attributes as Attr
 import Html.Events as Events
 import Http
+import Insights
 import Json.Encode as Encode
 import List.Extra as ListExtra
 import String
@@ -39,7 +40,8 @@ type EmitterView
 
 
 type alias Model =
-    { remote : Remote Data.Dashboard
+    { dashboard : Remote Data.Dashboard
+    , insights : Remote Insights.Doc
     , menu : Menu
     , selectedYear : Int
     , trendMode : TrendMode
@@ -51,6 +53,7 @@ type alias Model =
 
 type Msg
     = GotDashboard (Result Http.Error Data.Dashboard)
+    | GotInsights (Result Http.Error Insights.Doc)
     | ChangeMenu Menu
     | ChangeYear String
     | SetTrend TrendMode
@@ -61,8 +64,8 @@ type Msg
 
 main : Program () Model Msg
 main =
-    Browser.document
-        { init = \_ -> ( initModel, fetchDashboard )
+    Browser.element
+        { init = \_ -> withTitle initModel (Cmd.batch [ fetchDashboard, fetchInsights ])
         , update = update
         , subscriptions = \_ -> Sub.none
         , view = view
@@ -71,7 +74,8 @@ main =
 
 initModel : Model
 initModel =
-    { remote = Loading
+    { dashboard = Loading
+    , insights = Loading
     , menu = Learn
     , selectedYear = 2021
     , trendMode = Total
@@ -87,6 +91,17 @@ fetchDashboard =
         { url = "/data/dashboard.json"
         , expect = Http.expectJson GotDashboard Data.decoder
         }
+
+
+fetchInsights : Cmd Msg
+fetchInsights =
+    Http.get
+        { url = "/data/insights.json"
+        , expect = Http.expectJson GotInsights Insights.decoder
+        }
+
+
+port setTitle : String -> Cmd msg
 
 
 port mapUpdate : Encode.Value -> Cmd msg
@@ -123,51 +138,69 @@ update msg model =
 
                 updated =
                     { model
-                        | remote = Loaded dashboard
+                        | dashboard = Loaded dashboard
                         , selectedYear = latestYear
                         , focusIso = focusIso
                         , compareIso = compareIso
                     }
             in
-            ( updated, mapCmd updated.menu dashboard latestYear )
+            withTitle updated (mapCmd updated.menu dashboard latestYear)
 
         GotDashboard (Err err) ->
-            ( { model | remote = Failure (httpErrorToString err) }, Cmd.none )
+            let
+                newModel =
+                    { model | dashboard = Failure (httpErrorToString err) }
+            in
+            withTitle newModel Cmd.none
+
+        GotInsights (Ok doc) ->
+            let
+                newModel =
+                    { model | insights = Loaded doc }
+            in
+            withTitle newModel Cmd.none
+
+        GotInsights (Err err) ->
+            let
+                newModel =
+                    { model | insights = Failure (httpErrorToString err) }
+            in
+            withTitle newModel Cmd.none
 
         ChangeMenu menuChoice ->
             let
                 newModel =
                     { model | menu = menuChoice }
             in
-            case model.remote of
+            case model.dashboard of
                 Loaded dashboard ->
-                    ( newModel, mapCmd menuChoice dashboard model.selectedYear )
+                    withTitle newModel (mapCmd menuChoice dashboard model.selectedYear)
 
                 _ ->
-                    ( newModel, Cmd.none )
+                    withTitle newModel Cmd.none
 
         ChangeYear raw ->
-            case ( String.toInt raw, model.remote ) of
+            case ( String.toInt raw, model.dashboard ) of
                 ( Just year, Loaded dashboard ) ->
                     let
                         clamped = clampYear dashboard year
                     in
-                    ( { model | selectedYear = clamped }, mapCmd model.menu dashboard clamped )
+                    withTitle { model | selectedYear = clamped } (mapCmd model.menu dashboard clamped)
 
                 _ ->
-                    ( model, Cmd.none )
+                    withTitle model Cmd.none
 
         SetTrend mode ->
-            ( { model | trendMode = mode }, Cmd.none )
+            withTitle { model | trendMode = mode } Cmd.none
 
         SetEmitterView viewMode ->
-            ( { model | emitterView = viewMode }, Cmd.none )
+            withTitle { model | emitterView = viewMode } Cmd.none
 
         SelectFocus iso ->
-            ( { model | focusIso = Just iso }, Cmd.none )
+            withTitle { model | focusIso = Just iso } Cmd.none
 
         SelectCompare iso ->
-            ( { model | compareIso = Just iso }, Cmd.none )
+            withTitle { model | compareIso = Just iso } Cmd.none
 
 
 clampYear : Data.Dashboard -> Int -> Int
@@ -185,45 +218,29 @@ clampYear dashboard value =
 -- VIEW
 
 
-view : Model -> Browser.Document Msg
+view : Model -> Html Msg
 view model =
-    case model.remote of
+    Html.main_
+        [ Attr.class "layout" ]
+        (viewHero model.menu :: viewSections model)
+
+
+viewSections : Model -> List (Html Msg)
+viewSections model =
+    case model.dashboard of
         Loading ->
-            shellDocument "Carbon Pulse · Loading" model.menu [ viewLoading ]
+            [ viewLoading ]
 
         Failure message ->
-            shellDocument "Carbon Pulse · Error" model.menu [ viewError message ]
+            [ viewError message ]
 
         Loaded dashboard ->
-            let
-                sections =
-                    case model.menu of
-                        Learn ->
-                            viewLearnSections dashboard
+            case model.menu of
+                Learn ->
+                    viewLearnSections dashboard model.insights
 
-                        Explore ->
-                            viewExploreSections dashboard model
-
-                title =
-                    case model.menu of
-                        Learn ->
-                            "Carbon Pulse · Learn"
-
-                        Explore ->
-                            "Carbon Pulse · Explore"
-            in
-            shellDocument title model.menu sections
-
-
-shellDocument : String -> Menu -> List (Html Msg) -> Browser.Document Msg
-shellDocument title menu sections =
-    { title = title
-    , body =
-        [ Html.main_
-            [ Attr.class "layout" ]
-            (viewHero menu :: sections)
-        ]
-    }
+                Explore ->
+                    viewExploreSections dashboard model
 
 
 viewHero : Menu -> Html Msg
@@ -275,8 +292,230 @@ viewError message =
 -- LEARN MENU
 
 
-viewLearnSections : Data.Dashboard -> List (Html Msg)
-viewLearnSections dashboard =
+viewLearnSections : Data.Dashboard -> Remote Insights.Doc -> List (Html Msg)
+viewLearnSections dashboard insightsRemote =
+    case insightsRemote of
+        Loaded doc ->
+            let
+                year =
+                    sliderMaxYear dashboard
+
+                highlights =
+                    if List.isEmpty doc.insights.highlights then
+                        defaultHighlights dashboard
+                    else
+                        doc.insights.highlights
+
+                emitterRows =
+                    topCountriesByCo2 year 12 dashboard
+            in
+            [ viewInsightHero doc year
+            , viewHighlightGrid highlights
+            , viewInsightBoard dashboard year
+            , viewActionsGrid doc.insights.actions
+            , viewQuestionsGrid doc.insights.questions
+            , viewTopEmitterTable year emitterRows
+            , viewYoYTable dashboard
+            ]
+
+        Loading ->
+            [ viewInsightsLoading ]
+
+        Failure _ ->
+            legacyLearnSections dashboard
+
+
+viewInsightHero : Insights.Doc -> Int -> Html Msg
+viewInsightHero doc year =
+    Html.section [ Attr.class "panel insight-hero" ]
+        [ Html.div []
+            [ Html.p [ Attr.class "eyebrow" ]
+                [ Html.text ("AI summary · " ++ doc.model ++ " · " ++ String.left 10 doc.generatedAt) ]
+            , Html.h2 [] [ Html.text "CO₂ intelligence briefing" ]
+            , Html.p [] [ Html.text doc.insights.narrative ]
+            ]
+        , Html.div [ Attr.class "insight-meta" ]
+            [ Html.div []
+                [ Html.span [ Attr.class "muted" ] [ Html.text "Status" ]
+                , Html.strong [] [ Html.text (String.toUpper doc.status) ]
+                ]
+            , Html.div []
+                [ Html.span [ Attr.class "muted" ] [ Html.text "Latest year" ]
+                , Html.strong [] [ Html.text (String.fromInt year) ]
+                ]
+            ]
+        ]
+
+
+viewHighlightGrid : List Insights.Highlight -> Html Msg
+viewHighlightGrid highlights =
+    Html.section [ Attr.class "panel insight-grid" ]
+        [ Html.div [ Attr.class "section-header" ]
+            [ Html.h2 [] [ Html.text "Key findings" ]
+            , Html.span [] [ Html.text "AI-ranked highlights with evidence" ]
+            ]
+        , Html.div [ Attr.class "insight-grid__cards" ]
+            (highlights
+                |> List.map
+                    (\item ->
+                        Html.article [ Attr.class "insight-highlight" ]
+                            [ Html.h3 [] [ Html.text item.title ]
+                            , Html.p [] [ Html.text item.detail ]
+                            , case item.evidence of
+                                Just proof ->
+                                    Html.span [ Attr.class "insight-highlight__evidence" ] [ Html.text proof ]
+
+                                Nothing ->
+                                    Html.text ""
+                              ]
+                    )
+            )
+        ]
+
+
+viewInsightBoard : Data.Dashboard -> Int -> Html Msg
+viewInsightBoard dashboard year =
+    let
+        metrics =
+            insightBoardMetrics dashboard year
+    in
+    Html.section [ Attr.class "panel insight-board" ]
+        [ Html.div [ Attr.class "section-header" ]
+            [ Html.h2 [] [ Html.text "Data pulse" ]
+            , Html.span [] [ Html.text "Live metrics derived from the dataset" ]
+            ]
+        , Html.div [ Attr.class "metric-row" ]
+            (metrics
+                |> List.map
+                    (\( label, value, caption ) ->
+                        Html.div [ Attr.class "metric metric--dense" ]
+                            [ Html.span [] [ Html.text label ]
+                            , Html.strong [] [ Html.text value ]
+                            , Html.span [ Attr.class "muted" ] [ Html.text caption ]
+                            ]
+                    )
+            )
+        ]
+
+
+viewActionsGrid : List String -> Html Msg
+viewActionsGrid actions =
+    Html.section [ Attr.class "panel actions-grid" ]
+        [ Html.div [ Attr.class "section-header" ]
+            [ Html.h2 [] [ Html.text "Actions to bend the curve" ]
+            , Html.span [] [ Html.text "AI-proposed levers" ]
+            ]
+        , Html.ol []
+            ((if List.isEmpty actions then
+                    [ "Awaiting AI actions — customize HF token for richer guidance." ]
+                else
+                    actions
+             )
+                |> List.map (\action -> Html.li [] [ Html.text action ])
+            )
+        ]
+
+
+viewQuestionsGrid : List String -> Html Msg
+viewQuestionsGrid questions =
+    Html.section [ Attr.class "panel questions-grid" ]
+        [ Html.div [ Attr.class "section-header" ]
+            [ Html.h2 [] [ Html.text "Investigate next" ]
+            , Html.span [] [ Html.text "Open questions raised by the model" ]
+            ]
+        , Html.ul []
+            ((if List.isEmpty questions then
+                    [ "No AI questions yet — add a HF token for deeper prompts." ]
+                else
+                    questions
+             )
+                |> List.map (\question -> Html.li [] [ Html.text question ])
+            )
+        ]
+
+
+viewTopEmitterTable : Int -> List CountrySnapshot -> Html Msg
+viewTopEmitterTable year rows =
+    Html.section [ Attr.class "panel insight-table" ]
+        [ Html.div [ Attr.class "section-header" ]
+            [ Html.h2 [] [ Html.text "Top emitters table" ]
+            , Html.span [] [ Html.text ("Ranked by total CO₂ · " ++ String.fromInt year) ]
+            ]
+        , Html.table []
+            [ Html.thead []
+                [ Html.tr []
+                    [ Html.th [] [ Html.text "Country" ]
+                    , Html.th [] [ Html.text "CO₂ (Mt)" ]
+                    , Html.th [] [ Html.text "Share (%)" ]
+                    , Html.th [] [ Html.text "Per capita (t)" ]
+                    ]
+                ]
+            , Html.tbody []
+                (rows
+                    |> List.indexedMap
+                        (\index row ->
+                            Html.tr []
+                                [ Html.td [] [ Html.text (String.fromInt (index + 1) ++ ". " ++ row.name) ]
+                                , Html.td [] [ Html.text (formatNumber 1 row.co2) ]
+                                , Html.td [] [ Html.text (row.share |> Maybe.map (\v -> formatNumber 2 v ++ "%") |> Maybe.withDefault "—") ]
+                                , Html.td [] [ Html.text (row.perCapita |> Maybe.map (formatNumber 2) |> Maybe.withDefault "—") ]
+                                ]
+                        )
+                )
+            ]
+        ]
+
+
+viewYoYTable : Data.Dashboard -> Html Msg
+viewYoYTable dashboard =
+    let
+        rows =
+            globalYoYRows dashboard
+    in
+    if List.isEmpty rows then
+        Html.text ""
+
+    else
+        Html.section [ Attr.class "panel insight-table" ]
+            [ Html.div [ Attr.class "section-header" ]
+                [ Html.h2 [] [ Html.text "Recent momentum" ]
+                , Html.span [] [ Html.text "Global totals vs previous year" ]
+                ]
+            , Html.table []
+                [ Html.thead []
+                    [ Html.tr []
+                        [ Html.th [] [ Html.text "Year" ]
+                        , Html.th [] [ Html.text "CO₂ (Mt)" ]
+                        , Html.th [] [ Html.text "Δ Mt" ]
+                        , Html.th [] [ Html.text "Δ %" ]
+                        ]
+                    ]
+                , Html.tbody []
+                    (rows
+                        |> List.map
+                            (\row ->
+                                Html.tr []
+                                    [ Html.td [] [ Html.text (String.fromInt row.year) ]
+                                    , Html.td [] [ Html.text (formatNumber 1 row.total) ]
+                                    , Html.td [] [ Html.text (formatSigned row.delta) ]
+                                    , Html.td [] [ Html.text (formatSigned row.percent ++ "%") ]
+                                    ]
+                            )
+                    )
+                ]
+            ]
+
+
+viewInsightsLoading : Html Msg
+viewInsightsLoading =
+    Html.section [ Attr.class "panel loading" ]
+        [ Html.h2 [] [ Html.text "Calibrating AI insights" ]
+        , Html.p [ Attr.class "muted" ] [ Html.text "Summarizing the CSV to power deep-dive stories…" ]
+        ]
+
+
+legacyLearnSections : Data.Dashboard -> List (Html Msg)
+legacyLearnSections dashboard =
     let
         year =
             sliderMaxYear dashboard
@@ -949,6 +1188,14 @@ type alias ChangeEntry =
     }
 
 
+type alias YoYRow =
+    { year : Int
+    , total : Float
+    , delta : Float
+    , percent : Float
+    }
+
+
 countryDict : Data.Dashboard -> Dict String Data.Country
 countryDict dashboard =
     dashboard.countries
@@ -1448,3 +1695,152 @@ isAggregator name =
     String.contains "income" (String.toLower name)
         || String.contains "(GCP" name
         || name == "World"
+
+
+withTitle : Model -> Cmd Msg -> ( Model, Cmd Msg )
+withTitle model cmd =
+    ( model, Cmd.batch [ cmd, setTitle (titleFor model) ] )
+
+
+titleFor : Model -> String
+titleFor model =
+    case model.dashboard of
+        Loading ->
+            "Carbon Pulse · Loading"
+
+        Failure _ ->
+            "Carbon Pulse · Error"
+
+        Loaded _ ->
+            case model.menu of
+                Learn ->
+                    "Carbon Pulse · Learn"
+
+                Explore ->
+                    "Carbon Pulse · Explore"
+
+
+defaultHighlights : Data.Dashboard -> List Insights.Highlight
+defaultHighlights dashboard =
+    let
+        minYear =
+            sliderMinYear dashboard
+
+        maxYear =
+            sliderMaxYear dashboard
+
+        totalRecords =
+            dashboard.global.years |> List.length |> String.fromInt
+
+        datasetHighlight =
+            { title = "Dataset span"
+            , detail = "Coverage from " ++ String.fromInt minYear ++ " to " ++ String.fromInt maxYear ++ " · " ++ totalRecords ++ " annual aggregates."
+            , evidence = Just "global.years"
+            }
+
+        yoyHighlight =
+            case globalYoY maxYear dashboard.global of
+                Just ( delta, percent ) ->
+                    { title = "Momentum"
+                    , detail = "Latest year moved " ++ formatSigned delta ++ " Mt (" ++ formatSigned percent ++ "%) vs prior year."
+                    , evidence = Just ("Year " ++ String.fromInt maxYear)
+                    }
+
+                Nothing ->
+                    { title = "Momentum"
+                    , detail = "Insufficient data to compute global change."
+                    , evidence = Nothing
+                    }
+
+        topHighlight =
+            case topCountriesByCo2 maxYear 1 dashboard |> List.head of
+                Just leader ->
+                    { title = "Lead emitter"
+                    , detail = leader.name ++ " contributes " ++ formatNumber 0 leader.co2 ++ " Mt in " ++ String.fromInt maxYear ++ "."
+                    , evidence = Just leader.name
+                    }
+
+                Nothing ->
+                    { title = "Lead emitter"
+                    , detail = "No country data available."
+                    , evidence = Nothing
+                    }
+    in
+    [ datasetHighlight, yoyHighlight, topHighlight ]
+
+
+insightBoardMetrics : Data.Dashboard -> Int -> List ( String, String, String )
+insightBoardMetrics dashboard year =
+    let
+        point =
+            globalPointForYear year dashboard.global
+
+        total =
+            point |> Maybe.andThen .co2 |> Maybe.withDefault 0
+
+        perCapita =
+            point |> Maybe.andThen .co2PerCapita |> Maybe.withDefault 0
+
+        population =
+            point |> Maybe.andThen .population |> Maybe.withDefault 0
+
+        countriesCount =
+            List.length dashboard.countries
+
+        yoy =
+            globalYoY year dashboard.global
+
+        topEmitter =
+            topCountriesByCo2 year 1 dashboard |> List.head
+    in
+    [ ( "Global CO₂", formatNumber 0 total, "Mt emitted in " ++ String.fromInt year )
+    , ( "Per capita", formatNumber 2 perCapita, "t/person this year" )
+    , ( "Population", formatPopulation population, "people captured in dataset" )
+    , ( "Countries", String.fromInt countriesCount, "entities with full histories" )
+    , ( "YoY shift"
+      , yoy |> Maybe.map (\( delta, _ ) -> formatSigned delta ++ " Mt") |> Maybe.withDefault "–"
+      , yoy |> Maybe.map (\( _, pct ) -> formatSigned pct ++ "%") |> Maybe.withDefault "vs prior year"
+      )
+    , ( "Top emitter"
+      , topEmitter |> Maybe.map .name |> Maybe.withDefault "—"
+      , topEmitter |> Maybe.map (\row -> formatNumber 0 row.co2 ++ " Mt") |> Maybe.withDefault ""
+      )
+    ]
+
+
+globalYoYRows : Data.Dashboard -> List YoYRow
+globalYoYRows dashboard =
+    let
+        totals =
+            seriesToPoints dashboard.global
+                |> List.filterMap (\point -> point.co2 |> Maybe.map (\value -> ( point.year, value )))
+                |> takeRecent 8
+    in
+    List.map2
+        (\( year, total ) ( _, prev ) ->
+            { year = year
+            , total = total
+            , delta = total - prev
+            , percent =
+                if prev == 0 then
+                    0
+                else
+                    ((total - prev) / prev) * 100
+            }
+        )
+        (List.drop 1 totals)
+        totals
+
+
+formatSigned : Float -> String
+formatSigned value =
+    let
+        sign =
+            if value > 0 then
+                "+"
+            else if value < 0 then
+                ""
+            else
+                ""
+    in
+    sign ++ formatNumber 1 value
