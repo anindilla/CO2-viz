@@ -26,6 +26,8 @@ type alias Series =
     , co2 : List (Maybe Float)
     , perCapita : List (Maybe Float)
     , share : List (Maybe Float)
+    , population : List (Maybe Float)
+    , gdp : List (Maybe Float)
     }
 
 
@@ -43,6 +45,7 @@ type alias Snapshot =
     , perCapita : Maybe Float
     , share : Maybe Float
     , population : Maybe Float
+    , gdp : Maybe Float
     }
 
 
@@ -77,6 +80,8 @@ seriesDecoder =
         |> required "co2" (Decode.list maybeFloat)
         |> required "perCapita" (Decode.list maybeFloat)
         |> required "share" (Decode.list maybeFloat)
+        |> required "population" (Decode.list maybeFloat)
+        |> required "gdp" (Decode.list maybeFloat)
 
 
 countryDecoder : Decoder Country
@@ -96,6 +101,7 @@ snapshotDecoder =
         |> required "perCapita" maybeFloat
         |> required "share" maybeFloat
         |> required "population" maybeFloat
+        |> required "gdp" maybeFloat
 
 
 emittersDecoder : Decoder EmittersForYear

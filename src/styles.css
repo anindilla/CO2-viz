@@ -193,6 +193,146 @@ input[type='range'] {
   margin: 0;
 }
 
+.year-slider {
+  margin-top: 1.25rem;
+}
+
+.year-slider label {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.toggle-group {
+  display: inline-flex;
+  gap: 0.4rem;
+  background: rgba(15, 23, 42, 0.04);
+  padding: 0.2rem;
+  border-radius: 999px;
+}
+
+.toggle {
+  border: none;
+  background: transparent;
+  padding: 0.35rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.toggle--active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.bar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.bar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.bar-row__label {
+  font-weight: 600;
+}
+
+.bar-row__track {
+  background: rgba(79, 70, 229, 0.08);
+  border-radius: 999px;
+  height: 12px;
+  position: relative;
+  overflow: hidden;
+}
+
+.bar-row__value {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--accent));
+  border-radius: inherit;
+}
+
+.bar-row__track span {
+  position: absolute;
+  top: -1.6rem;
+  right: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.pareto {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.pareto-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pareto-bar {
+  flex: 1;
+  height: 10px;
+  background: rgba(79, 70, 229, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.pareto-bar > div {
+  height: 100%;
+  background: var(--primary);
+}
+
+.scatter {
+  width: 100%;
+  height: auto;
+}
+
+.map-panel__body {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1.25rem;
+}
+
+.map-panel__map {
+  min-height: 360px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.map-panel__legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.map-panel__legend-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  padding-bottom: 0.35rem;
+}
+
+.map-panel__legend-row span:last-child {
+  font-weight: 600;
+}
+
+.maplibregl-popup-content {
+  font-family: inherit;
+  font-size: 0.85rem;
+  border-radius: 12px;
+  padding: 0.75rem;
+}
+
 .error {
   border: 1px solid rgba(239, 68, 68, 0.35);
   background: rgba(239, 68, 68, 0.08);
@@ -230,6 +370,10 @@ input[type='range'] {
 
   .metric-row {
     grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  }
+
+  .map-panel__body {
+    grid-template-columns: 1fr;
   }
 }
 

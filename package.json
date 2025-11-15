@@ -23,6 +23,7 @@
     "vite-plugin-elm": "^3.0.1"
   },
   "dependencies": {
-    "csv-parse": "^6.1.0"
+    "csv-parse": "^6.1.0",
+    "maplibre-gl": "^5.13.0"
   }
 }

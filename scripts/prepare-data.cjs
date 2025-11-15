@@ -48,9 +48,17 @@ function main() {
     const perCapita = roundFloat(toNumber(row.co2_per_capita));
     const share = roundFloat(toNumber(row.share_global_co2));
     const population = toNumber(row.population);
+    const gdp = toNumber(row.gdp);
 
     if (row.country === 'World') {
-      globalPoints.push({ year, co2, perCapita });
+      globalPoints.push({
+        year,
+        co2,
+        perCapita,
+        share: null,
+        population: population ? Math.round(population) : null,
+        gdp: gdp ? Math.round(gdp) : null
+      });
     }
 
     if (!countryPoints.has(iso)) {
@@ -63,7 +71,14 @@ function main() {
     }
 
     const entry = countryPoints.get(iso);
-    entry.points.push({ year, co2, perCapita, share });
+    entry.points.push({
+      year,
+      co2,
+      perCapita,
+      share,
+      population: population ? Math.round(population) : null,
+      gdp: gdp ? Math.round(gdp) : null
+    });
 
     if (!entry.latest || year > entry.latest.year) {
       entry.latest = {
@@ -71,7 +86,8 @@ function main() {
         co2,
         perCapita,
         share,
-        population: population ? Math.round(population) : null
+        population: population ? Math.round(population) : null,
+        gdp: gdp ? Math.round(gdp) : null
       };
     }
 
@@ -108,7 +124,9 @@ function finalizeSeries(points) {
     years: sorted.map((point) => point.year),
     co2: sorted.map((point) => point.co2),
     perCapita: sorted.map((point) => point.perCapita),
-    share: sorted.map((point) => point.share ?? null)
+    share: sorted.map((point) => point.share ?? null),
+    population: sorted.map((point) => point.population ?? null),
+    gdp: sorted.map((point) => point.gdp ?? null)
   };
 }
 
